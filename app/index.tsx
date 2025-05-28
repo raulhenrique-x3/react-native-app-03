@@ -80,16 +80,6 @@ export default function Index() {
 
     data.append("tags", UPLOAD_PRESET);
 
-    console.log("Enviando imagem para Cloudinary:", data);
-    console.log("Dados enviados:", {
-      upload_preset: UPLOAD_PRESET,
-      file: {
-        uri: photo.uri,
-        type: photo.type || "image/jpeg",
-        name: photo.fileName || "upload.jpg",
-      },
-      tags: UPLOAD_PRESET,
-    });
     try {
       const res = await fetch(
         `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
