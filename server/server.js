@@ -19,7 +19,7 @@ app.use(bodyParser.json());
 
 // ✅ Listar imagens com uma tag (usa o upload_preset como tag)
 app.get('/images', async (req, res) => {
-  const { tag = 'aula8ifpe' } = req.query;
+  const { tag = 'storage_facul' } = req.query;
 
   try {
     const result = await cloudinary.api.resources_by_tag(tag, {
