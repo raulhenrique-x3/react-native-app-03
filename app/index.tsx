@@ -1,206 +1,217 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, ScrollView } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import api from '@/api/api';
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Button,
+  Image,
+  FlatList,
+  TouchableOpacity,
+  Text,
+  Alert,
+  ActivityIndicator,
+  StyleSheet,
+  Platform,
+} from "react-native";
+import * as ImagePicker from "expo-image-picker";
 
-interface Category {
-  id: number;
-  name: string;
-  icon: string;
-}
+const CLOUD_NAME = "dxfdy9lxc";
+const UPLOAD_PRESET = "storage_facul";
 
-interface Doctor {
-  id: number;
-  name: string;
-  specialty: string;
-  rating: number;
-  reviews: number;
-  photo: string;
-}
+// Substitua pelo endereço do seu backend Node.js
+const BACKEND_URL = "http://10.31.88.99:3001"; // ou IP local da sua máquina
 
-interface HomeData {
-  user: {
-    name: string;
-    profilePicture: string;
-  };
-  categories: Category[];
-  topDoctors: Doctor[];
-}
-
-export default function HomeScreen() {
-  const [homeData, setHomeData] = useState<HomeData | null>(null);
-
-  async function fetchHomeData() {
-    try {
-      const res = await api.get('/home');
-      setHomeData(res.data);
-    } catch (error) {
-      console.error("Erro ao buscar dados da home:", error);
-    }
-  }
+export default function Index() {
+  const [images, setImages] = useState<any[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [loadingImages, setLoadingImages] = useState(false);
 
   useEffect(() => {
-    fetchHomeData();
+    (async () => {
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permissão necessária",
+          "Precisamos da sua permissão para acessar a galeria."
+        );
+      } else {
+        loadImages();
+      }
+    })();
   }, []);
 
-  if (!homeData) return null;
+  const loadImages = async () => {
+    setLoadingImages(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/images`);
+      const data = await res.json();
+      setImages(data);
+    } catch (error) {
+      Alert.alert("Erro", "Falha ao carregar imagens");
+    } finally {
+      setLoadingImages(false);
+    }
+  };
+
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      await uploadToCloudinary(result.assets[0]);
+    }
+  };
+
+  const uploadToCloudinary = async (photo: any) => {
+    setUploading(true);
+    const data: any = new FormData();
+    data.append("upload_preset", UPLOAD_PRESET);
+
+    if (Platform.OS === "web") {
+      data.append("file", photo.file);
+    } else {
+      data.append("file", {
+        uri: photo.uri,
+        type: photo.type ?? "image/jpeg",
+        name: photo.fileName ?? "upload.jpg",
+      } as any);
+    }
+
+    data.append("tags", UPLOAD_PRESET);
+
+    console.log("Enviando imagem para Cloudinary:", data);
+    console.log("Dados enviados:", {
+      upload_preset: UPLOAD_PRESET,
+      file: {
+        uri: photo.uri,
+        type: photo.type || "image/jpeg",
+        name: photo.fileName || "upload.jpg",
+      },
+      tags: UPLOAD_PRESET,
+    });
+    try {
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+        {
+          method: "POST",
+          body: data,
+          // headers: {
+          //   "Content-Type": "multipart/form-data",
+          // },
+        }
+      );
+      const result = await res.json();
+      if (result.secure_url) {
+        setImages((prev: any) => [result, ...prev]);
+      } else {
+        Alert.alert("Erro no upload", "Falha ao enviar imagem para Cloudinary");
+      }
+    } catch (error: any) {
+      Alert.alert(
+        "Erro no upload",
+
+        error.message
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const deleteImage = (public_id: any) => {
+    Alert.alert("Deletar imagem", "Deseja realmente remover esta imagem?", [
+      {
+        text: "Cancelar",
+
+        style: "cancel",
+      },
+
+      {
+        text: "Remover",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const res = await fetch(`${BACKEND_URL}/delete-image`, {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ public_id }),
+            });
+            const json = await res.json();
+
+            if (json.result === "ok") {
+              setImages((prev) =>
+                prev.filter((img: any) => img.public_id !== public_id)
+              );
+              Alert.alert("Sucesso", "Imagem deletada");
+            } else {
+              Alert.alert("Erro", "Falha ao deletar imagem");
+            }
+          } catch (error: any) {
+            Alert.alert(
+              "Erro",
+
+              error.message
+            );
+          }
+        },
+      },
+    ]);
+  };
+
+  const renderItem = ({ item }: any) => (
+    <View style={styles.imageContainer}>
+      <Image source={{ uri: item.secure_url }} style={styles.image} />
+      <TouchableOpacity
+        onPress={() => deleteImage(item.public_id)}
+        style={styles.deleteButton}
+      >
+        <Text style={styles.deleteText}>Deletar</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <View style={{
-          display: 'flex',
-          flexDirection: 'row',
-          justifyContent: 'flex-start',
-          alignItems: 'flex-start'
-        }}>
-          <Image source={{ uri: homeData.user.profilePicture }} style={styles.avatar} />
-          <View>
-            <Text style={styles.welcomeText}>Welcome</Text>
-            <Text style={styles.userName}>{homeData.user.name}</Text>
-          </View>
-        </View>
-
-        <View style={styles.searchBox}>
-          <TextInput placeholder="Search doctor" style={styles.input} />
-          <Ionicons name="search" size={20} color="#1976D2" />
-        </View>
-      </View>
-
-
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Categories</Text>
-        <View style={styles.categories}>
-          {homeData.categories.map((cat) => (
-            <View key={cat.id} style={styles.categoryBox}>
-              <Image source={{ uri: cat.icon }} style={styles.icons} />
-              <Text style={styles.categoryText}>{cat.name}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Top doctors</Text>
-        {homeData.topDoctors.map((doc) => (
-          <View key={doc.id} style={styles.doctorCard}>
-            <Image source={{ uri: doc.photo }} style={styles.doctorPhoto} />
-            <View>
-              <Text style={styles.doctorName}>{doc.name}</Text>
-              <Text style={styles.doctorSpecialty}>{doc.specialty}</Text>
-              <View style={styles.ratingRow}>
-                <Ionicons name="star" size={16} color="#FFD700" />
-                <Text style={styles.ratingText}>{doc.rating} ({doc.reviews} Reviews)</Text>
-              </View>
-            </View>
-          </View>
-        ))}
-      </View>
-    </ScrollView>
+    <View style={styles.container}>
+      <Text style={{ fontSize: 24, fontWeight: "bold" }}>Galeria</Text>
+      <Button title="Selecionar imagem" onPress={pickImage} />
+      {uploading && (
+        <ActivityIndicator
+          size="large"
+          color="#0000ff"
+          style={{ marginTop: 10 }}
+        />
+      )}
+      {loadingImages ? (
+        <ActivityIndicator
+          size="large"
+          color="green"
+          style={{ marginTop: 20 }}
+        />
+      ) : (
+        <FlatList
+          data={images}
+          keyExtractor={(item: any) => item.public_id}
+          renderItem={renderItem}
+          contentContainerStyle={{ marginTop: 20 }}
+        />
+      )}
+    </View>
   );
 }
-
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#f0f4ff',
-    flex: 1,
+  container: { flex: 1, paddingTop: 60, paddingHorizontal: 20 },
+  imageContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 15,
+    gap: 10,
   },
-  header: {
-    backgroundColor: '#636DFF',
-    padding: 16,
-    borderBottomEndRadius: 12,
-    borderBottomLeftRadius: 12
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    marginRight: 12,
-  },
-  welcomeText: {
-    color: '#fff',
-    fontSize: 14,
-  },
-  userName: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  searchBox: {
-    backgroundColor: '#fff',
-    marginTop: 16,
+  image: { width: 120, height: 120, borderRadius: 8 },
+  deleteButton: {
+    backgroundColor: "#ff4d4d",
+    paddingVertical: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderRadius: 6,
   },
-  input: {
-    flex: 1,
-    marginRight: 8,
-  },
-  section: {
-    marginTop: 24,
-    paddingHorizontal: 16
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  categories: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  categoryBox: {
-    width: '30%',
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  categoryText: {
-    marginTop: 8,
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  doctorCard: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  doctorPhoto: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    marginRight: 12,
-  },
-  icons: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-  },
-  doctorName: {
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  doctorSpecialty: {
-    fontSize: 14,
-    color: '#666',
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  ratingText: {
-    marginLeft: 4,
-    fontSize: 13,
-    color: '#444',
-  }
+  deleteText: { color: "#fff", fontWeight: "bold" },
 });
