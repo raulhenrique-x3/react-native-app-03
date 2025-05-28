@@ -96,9 +96,6 @@ export default function Index() {
         {
           method: "POST",
           body: data,
-          // headers: {
-          //   "Content-Type": "multipart/form-data",
-          // },
         }
       );
       const result = await res.json();
